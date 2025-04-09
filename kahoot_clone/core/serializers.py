@@ -1,82 +1,40 @@
-# from rest_framework import serializers
-# from .models import *
-#
-# class StudentSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Student
-#         fields = ['name']
-#
-# class ClassroomSerializer(serializers.ModelSerializer):
-#     students = StudentSerializer(many=True)
-#
-#     class Meta:
-#         model = Classroom
-#         fields = ['id', 'name', 'students']
-#
-# class LevelSerializer(serializers.ModelSerializer):
-#     participants = StudentSerializer(many=True)
-#
-#     class Meta:
-#         model = Level
-#         fields = ['id', 'title', 'participants']
-#
-# class SchoolSerializer(serializers.ModelSerializer):
-#     classes = ClassroomSerializer(many=True)
-#     levels = LevelSerializer(many=True)
-#
-#     class Meta:
-#         model = School
-#         fields = ['id', 'name', 'classes', 'levels']
-#
-# class WinnerEntrySerializer(serializers.ModelSerializer):
-#     student = StudentSerializer()
-#
-#     class Meta:
-#         model = Winner
-#         fields = ['student', 'score']
-#
-# class QuizSerializer(serializers.ModelSerializer):
-#     winners = WinnerEntrySerializer(many=True)
-#     level = serializers.StringRelatedField()
-#
-#     class Meta:
-#         model = Quiz
-#         fields = ['id', 'quiz_name', 'level', 'date', 'winners']
 from rest_framework import serializers
 from .models import Student, School, Classroom, Level, Quiz, Winner
 
 
+# Сериализатор для модели Student
 class StudentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
-        fields = ['name']
+        fields = ['id', 'name']
 
 
+# Сериализатор для модели School
+class SchoolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = School
+        fields = ['id', 'name']
+
+
+# Сериализатор для модели Classroom
 class ClassroomSerializer(serializers.ModelSerializer):
-    students = StudentSerializer(many=True)
+    school = SchoolSerializer()
 
     class Meta:
         model = Classroom
-        fields = ['id', 'name', 'students']
+        fields = ['id', 'name', 'school', 'students']
 
 
+# Сериализатор для модели Level
 class LevelSerializer(serializers.ModelSerializer):
-    participants = StudentSerializer(many=True)
+    school = SchoolSerializer()
 
     class Meta:
         model = Level
-        fields = ['id', 'title', 'participants']
+        fields = ['id', 'title', 'school', 'participants']
 
 
-class SchoolSerializer(serializers.ModelSerializer):
-    classes = ClassroomSerializer(many=True)
-    levels = LevelSerializer(many=True)
-
-    class Meta:
-        model = School
-        fields = ['id', 'name', 'classes', 'levels']
-
-
+# Сериализатор для модели Winner
 class WinnerEntrySerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='student.name')
 
@@ -85,22 +43,32 @@ class WinnerEntrySerializer(serializers.ModelSerializer):
         fields = ['name', 'score']
 
 
-class QuizSerializer(serializers.ModelSerializer):
-    winners = serializers.SerializerMethodField()
-    level = serializers.StringRelatedField()
-    quiz_name = serializers.CharField(source='name')
+# Сериализатор для модели Quiz
+class QuizCreateSerializer(serializers.ModelSerializer):
+    quiz_name = serializers.CharField()
+    level = serializers.CharField()
+    date = serializers.DateTimeField()
+    winners = WinnerEntrySerializer(many=True)
 
     class Meta:
         model = Quiz
         fields = ['id', 'quiz_name', 'level', 'date', 'winners']
 
-    def get_winners(self, obj):
-        winners = obj.winners.all()
-        if winners.exists():
-            return WinnerEntrySerializer(winners, many=True).data
-        else:
-            return [
-                {"name": "", "score": None},
-                {"name": "", "score": None},
-                {"name": "", "score": None}
-            ]
+    def create(self, validated_data):
+        winners_data = validated_data.pop('winners')
+        quiz = Quiz.objects.create(**validated_data)
+        for winner_data in winners_data:
+            student_name = winner_data['name']
+            student = Student.objects.get(name=student_name)  # Извлекаем студента по имени
+            Winner.objects.create(quiz=quiz, student=student, score=winner_data['score'])
+        return quiz
+
+
+# Сериализатор для вывода списка викторин
+class QuizSerializer(serializers.ModelSerializer):
+    level = LevelSerializer()
+    winners = WinnerEntrySerializer(many=True)
+
+    class Meta:
+        model = Quiz
+        fields = ['id', 'quiz_name', 'level', 'date', 'winners']
